@@ -183,6 +183,13 @@ class RecoveryTests(unittest.TestCase):
         self.assertFalse((app / "Contents/Resources/AuraPayloads").exists())
         self.assertTrue(all("--verify" in command for command in self.commands))
 
+    def test_j616s_retains_the_finalized_raw_recovery_bundle(self):
+        self.installer.sysinfo = SimpleNamespace(device_class="j616sap")
+        result = self.stage()
+        self.assertEqual(result["configuration"]["bootMode"], "raw")
+        self.assertEqual(result["configuration"]["stage2Path"], "m1n1/boot.bin")
+        self.assertFalse(result["configuration"]["allowCustomBootArguments"])
+
     def test_neo_configuration_explicitly_allows_custom_boot_arguments(self):
         self.installer.sysinfo = SimpleNamespace(device_class="j700ap")
         result = self.stage()

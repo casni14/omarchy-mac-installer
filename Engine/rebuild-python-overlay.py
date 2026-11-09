@@ -166,6 +166,14 @@ def rebuild(checkout, base, output):
             if archive.extractfile('./' + name).read() != patched:
                 raise ValueError('bootstrap hook differs from the locked source patch: ' + source)
             overlay[name] = patched
+        # C2 firmware collection is a downstream change to an unchanged upstream file.
+        # Authenticate the bootstrap before replacing it, just as for upstream deltas.
+        source = 'asahi_firmware/wifi.py'
+        original = git(checkout, 'show', 'HEAD:' + source)
+        if archive.extractfile('./' + source).read() != original:
+            raise ValueError('bootstrap Wi-Fi collector differs from locked upstream')
+        overlay[source] = apply_downstream_patch(
+            root / lock['downstream_overlay']['patch']['path'], source, original)
         output.parent.mkdir(parents=True, exist_ok=True)
         with output.open('xb') as raw, gzip.GzipFile(filename='', mode='wb', fileobj=raw, mtime=0, compresslevel=9) as gz:
             with tarfile.open(fileobj=gz, mode='w|', format=tarfile.PAX_FORMAT) as result:

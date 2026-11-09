@@ -2019,6 +2019,52 @@ def j700_stage1(path=b"", window=0, uuid=b""):
     return b"m1n1 j700 stage 1" + block + b"\0" * 64 + b"STACKBOT"
 
 
+class J616sFirmwareTests(unittest.TestCase):
+    def test_missing_legacy_camera_does_not_abort_fallback_archive(self):
+        from omarchy_asahi import _WithJ616sFirmwareArchive
+        process = SimpleNamespace(run=unittest.mock.Mock())
+        command = ["tar", "czf", "all_firmware.tar.gz", "fud_firmware",
+                   "-C", "recovery/usr/share", "firmware",
+                   "-C", "../../usr/sbin", "appleh13camerad",
+                   "-C", "/factory", "calibration"]
+        with patch("omarchy_asahi.os.path.isfile", return_value=False), patch(
+            "omarchy_asahi.os.listdir", return_value=["wifi", "bluetooth"]
+        ):
+            _WithJ616sFirmwareArchive(process).run(command, check=True)
+        actual = process.run.call_args.args[0]
+        self.assertNotIn("../../usr/sbin", actual)
+        self.assertNotIn("appleh13camerad", actual)
+        self.assertEqual(actual[-3:], ["-C", "/usr/share", "firmware/wifi"])
+        self.assertIn("calibration", actual)
+        self.assertIn("firmware/bluetooth", actual)
+        self.assertNotIn("firmware", actual)
+
+    def test_generic_wifi_is_accepted_and_single_sku_nvram_is_refused(self):
+        from omarchy_asahi import j616s_wifi_collection
+        base = "brcm/brcmfmac4388c2-pcie.apple"
+        entries = [(base + ext, SimpleNamespace(data=b"firmware"))
+                   for ext in (".bin", ".clm_blob", ".txt")]
+        collection = SimpleNamespace(files=lambda: iter(entries))
+        with patch("omarchy_asahi.stub.WiFiFWCollection", return_value=collection, create=True):
+            self.assertIs(j616s_wifi_collection(), collection)
+            entries[-1] = (base + ",hostomel-ID-WLMT-a.txt", SimpleNamespace(data=b"firmware"))
+            with self.assertRaisesRegex(AsahiAdapterError, "hostomel-X0.txt"):
+                j616s_wifi_collection()
+
+    def test_running_system_must_supply_hostomel_firmware(self):
+        from omarchy_asahi import j616s_wifi_collection
+        prefix = "brcm/brcmfmac4388c2-pcie.apple,hostomel"
+        entries = [(prefix + ext, SimpleNamespace(data=b"firmware"))
+                   for ext in (".bin", ".clm_blob", "-WLMT-a.txt")]
+        collection = SimpleNamespace(files=lambda: iter(entries))
+        with patch("omarchy_asahi.stub.WiFiFWCollection", return_value=collection, create=True) as factory:
+            self.assertIs(j616s_wifi_collection(), collection)
+            factory.assert_called_once_with("/usr/share/firmware/wifi")
+            entries.pop(0)
+            with self.assertRaisesRegex(AsahiAdapterError, "Wi-Fi firmware is missing"):
+                j616s_wifi_collection()
+
+
 class BoardStage1Tests(unittest.TestCase):
     UUID = "97c92d03-2cb3-461f-9134-134a58cc9fdc"
 
@@ -2171,6 +2217,17 @@ class EspBoardLayoutTests(unittest.TestCase):
                 # Leftovers from older image recipes must not override the
                 # common Stage2 or be deployed alongside the common Stage1.
                 self.assertEqual(esp_board_layout(board, members + self.MEMBERS, common_allowed=True), expected)
+
+    def test_j616s_keeps_its_board_stage2_with_common_stage1(self):
+        members = ["esp/aurora/stage1.bin", "esp/m1n1/boot.bin",
+                   "esp/m1n1/boot-j616s.bin", "esp/m1n1/boot-j700.bin"]
+        layout = esp_board_layout("j616sap", members, common_allowed=True)
+        self.assertEqual(layout, {
+            "esp/aurora/stage1.bin": "aurora/stage1.bin",
+            "esp/m1n1/boot-j616s.bin": "m1n1/boot.bin",
+        })
+        with self.assertRaisesRegex(AsahiAdapterError, "boot-j616s.bin"):
+            esp_board_layout("j616sap", members[:2], common_allowed=True)
 
     def test_common_image_requires_common_stage2(self):
         with self.assertRaisesRegex(AsahiAdapterError, "common image has no esp/m1n1/boot.bin"):

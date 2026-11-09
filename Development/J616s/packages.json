@@ -1,0 +1,10 @@
+{
+  "aura-1.0.0b1.r20261101-1-aarch64.pkg.tar.xz": "28669ca6d44e53376a1e868af1f01b0bd854d225e85441d3fae1bcfb4483af7e",
+  "aurora-firmware-20261018-4-any.pkg.tar.xz": "e8001a9f977a929bc8dc71f84867bf7c2832d152db092984152667ab35634db6",
+  "aurora-keyring-20261018-3-any.pkg.tar.xz": "83619504ca70ecaca14118993e24cee1fcc3fe273b6883ba193765352210ea74",
+  "linux-aurora-7.3.0.aurora1-8-aarch64.pkg.tar.xz": "9a772a37b22e06d4efe3611a290dabaa2cb2c7ee72b126d37ec35f9561116d1d",
+  "linux-aurora-headers-7.3.0.aurora1-8-aarch64.pkg.tar.xz": "6643bdc98cf9336594b8e6c56df674e23afb6f3fd1db52dd788bfd727bc809b2",
+  "mesa-aurora-1_26.3.0_devel.202610310638.c208afc352e-1-aarch64.pkg.tar.xz": "bded1136c00c256fdd723e077ccc26d20108cddee2d5ea7311e6fb582cdce7ea",
+  "uboot-aurora-2026.07.aurora5-1-aarch64.pkg.tar.xz": "b3bc7ed3e54f761a139077d55b5b1d6765b617776437472cac3530d56bd3351b",
+  "vulkan-aurora-1_26.3.0_devel.202610310638.c208afc352e-1-aarch64.pkg.tar.xz": "99057d9584391491d2044f71053e68aca42c07d582ca35509cb78cd3ee591554"
+}

@@ -537,7 +537,17 @@ ESP_STAGE2 = "esp/m1n1/boot.bin"
 # carries every board's prebuilt Stage 2: on its own board the file replaces
 # m1n1/boot.bin, and every other board drops it, so no ESP ever holds another
 # board's Stage 2.
-BOARD_STAGE2 = {"j700ap": "esp/m1n1/boot-j700.bin"}
+BOARD_STAGE2 = {
+    "j700ap": "esp/m1n1/boot-j700.bin",
+    "j616sap": "esp/m1n1/boot-j616s.bin",
+}
+
+
+def board_stage2(device_class, common_allowed):
+    # T6040 needs a board-filtered DTB bundle even with a common raw Stage 1.
+    if device_class == "j616sap" or not common_allowed:
+        return BOARD_STAGE2.get(device_class)
+    return None
 
 
 def esp_board_layout(device_class, members, *, common_allowed=False):
@@ -546,7 +556,7 @@ def esp_board_layout(device_class, members, *, common_allowed=False):
     common = common_allowed and COMMON_STAGE1.member in members
     if common and ESP_STAGE2 not in members:
         raise AsahiAdapterError(f"this common image has no {ESP_STAGE2}")
-    own = None if common else BOARD_STAGE2.get(device_class)
+    own = board_stage2(device_class, common)
     if own is not None and own not in members:
         board = BOARD_STAGE1.get(device_class)
         macs = board.macs if board is not None else device_class
@@ -679,6 +689,83 @@ def _neo_peripheral_collectors(installer):
             stub.AlsFWCollection, stub.ISPFWCollection, stub.subprocess = old_als, old_isp, old_process
 
 
+class _WithJ616sFirmwareArchive:
+    """25G83 may relocate or omit the legacy camera daemon."""
+
+    def __init__(self, module):
+        self._module = module
+
+    def __getattr__(self, name):
+        return getattr(self._module, name)
+
+    def run(self, command, *args, **kwargs):
+        if command[:3] == ["tar", "czf", "all_firmware.tar.gz"]:
+            command = list(command)
+            index = command.index("../../usr/sbin") - 1
+            camera = []
+            for directory in ("recovery/usr/sbin", "recovery/usr/libexec"):
+                names = [name for name in ("appleh13camerad", "appleh16camerad")
+                         if os.path.isfile(os.path.join(directory, name))]
+                if names:
+                    camera += ["-C", os.path.abspath(directory), *names]
+            command[index:index + 3] = camera
+            # Recovery's Wi-Fi tree is incomplete for this board. Archive only
+            # its other firmware, then add the selected host tree exactly once.
+            index = command.index("recovery/usr/share") + 1
+            command[index:index + 1] = [
+                "firmware/" + name for name in sorted(os.listdir("recovery/usr/share/firmware"))
+                if name != "wifi"
+            ]
+            command += ["-C", "/usr/share", "firmware/wifi"]
+        return self._module.run(command, *args, **kwargs)
+
+
+def j616s_wifi_collection(source="/usr/share/firmware/wifi"):
+    """25G83 Recovery lacks hostomel; collect it from the running macOS system."""
+    collection = stub.WiFiFWCollection(source)
+    names = {name for name, firmware in collection.files() if firmware.data}
+    base = "brcm/brcmfmac4388c2-pcie.apple"
+    board = base + ",hostomel"
+    skus = ("ID", "X0", "X2", "X3")
+    missing = []
+    for sku in ("", *skus):
+        stems = ([board + "-" + sku] if sku else []) + [board, base]
+        for extension in ("bin", "clm_blob"):
+            if not any(stem + "." + extension in names for stem in stems):
+                missing.append(stems[0] + "." + extension)
+        shared = base + ".txt" in names or board + ".txt" in names or any(
+            name.startswith(board + "-") and name.endswith(".txt")
+            and name[len(board) + 1:].split("-", 1)[0].split(".", 1)[0] not in skus
+            for name in names
+        )
+        specific = sku and any(
+            name == board + "-" + sku + ".txt"
+            or name.startswith(board + "-" + sku + "-") and name.endswith(".txt")
+            for name in names
+        )
+        if not shared and not specific:
+            missing.append(stems[0] + ".txt")
+    if missing:
+        raise AsahiAdapterError("J616s Wi-Fi firmware is missing from the running macOS system: "
+                                + ", ".join(missing))
+    return collection
+
+
+@contextlib.contextmanager
+def _j616s_wifi_collector(installer):
+    if getattr(getattr(installer, "sysinfo", None), "device_class", "") != "j616sap":
+        yield
+        return
+    collection = j616s_wifi_collection()
+    original, process = stub.WiFiFWCollection, stub.subprocess
+    try:
+        stub.WiFiFWCollection = lambda source: collection
+        stub.subprocess = _WithJ616sFirmwareArchive(process)
+        yield
+    finally:
+        stub.WiFiFWCollection, stub.subprocess = original, process
+
+
 def stub_installer(sysinfo, dutil, osinfo):
     """A StubInstaller that reads macOS 26 firmware's bootcaches.plist and
     writes Omarchy's own step2.sh as its Recovery setup."""
@@ -697,7 +784,7 @@ def stub_installer(sysinfo, dutil, osinfo):
     collect_firmware = installer.collect_firmware
 
     def collect_firmware_from_an_encrypted_recovery(pkg):
-        with _newer_trackpad_keys(), _neo_peripheral_collectors(installer):
+        with _newer_trackpad_keys(), _neo_peripheral_collectors(installer), _j616s_wifi_collector(installer):
             result = _collect_firmware(pkg)
         required = getattr(installer, "required_neo_peripherals", [])
         _collect_neo_radios(installer, pkg, required="radio" in required)
@@ -1292,6 +1379,9 @@ class AsahiStage1Adapter:
         excluded = self.template.get("excluded_device_classes", [])
         if (allowed is not None and board not in allowed) or board in excluded:
             raise AsahiAdapterError("this image is not qualified for this Mac")
+        if board == "j616sap":
+            # Detect missing board firmware before any partition operation.
+            j616s_wifi_collection()
         self.osins = OmarchyOSInstaller(
             self.installer.dutil,
             metadata,
@@ -1334,13 +1424,19 @@ class AsahiStage1Adapter:
         esp_members = self._esp_members()
         self.common_stage1 = COMMON_STAGE1.member in esp_members and common_stage1_allowed(
             self.template, self.installer.sysinfo.device_class, self.os_firmware)
+        if self.installer.sysinfo.device_class == "j616sap" and not (
+            self.os_firmware == "26.6.2" and self.common_stage1
+        ):
+            raise AsahiAdapterError("J616s requires its qualified Aurora 26.6.2 raw boot payload")
         board = board_stage1(self.installer.sysinfo.device_class, self.os_firmware, esp_members,
                              common_allowed=self.common_stage1)
         if board is not None:
             read_board_stage1(board, self.osins.pkg.read, self.template["next_object"])
         device_class = self.installer.sysinfo.device_class
         esp_board_layout(device_class, esp_members, common_allowed=self.common_stage1)
-        stage2 = ESP_STAGE2 if self.common_stage1 else BOARD_STAGE2.get(device_class)
+        stage2 = board_stage2(device_class, self.common_stage1)
+        if stage2 is None and self.common_stage1:
+            stage2 = ESP_STAGE2
         if stage2 is not None and self.osins.pkg.getinfo(stage2).file_size <= 0:
             raise AsahiAdapterError(f"this image has an empty {stage2}")
         self.installer.osins = self.osins
