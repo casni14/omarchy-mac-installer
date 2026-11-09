@@ -3,8 +3,12 @@
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
+from catalog_release import identity
 
 BASE_SHA256 = 'ad6f83c99488688dcbb7b00935a018256aeb24240d6b9a40d9efa0ffc72316ad'
 
@@ -24,7 +28,7 @@ def extract(build):
                 raise ValueError('unsafe base payload member')
         archive.extractall(destination)
     (build / 'base-input.json').write_text(json.dumps({'sha256': BASE_SHA256,
-        'source': 'https://mac.omarchy.org/v1/releases/omarchy-mac-4.5.0-r2-2026.11.05-08c81abcef4f/'
+        'source': identity()['INSTALLER_CATALOG_BASE'] + '/releases/omarchy-mac-4.5.0-r2-2026.11.05-08c81abcef4f/'
                   'omarchy-2026.11.05-aarch64-apple-silicon-mac-stable-os-package.zip'}, indent=2) + '\n')
 
 
