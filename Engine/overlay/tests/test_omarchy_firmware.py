@@ -63,9 +63,9 @@ UPSTREAM_IPSWS = [
           "j514map", "j516sap", "j516cap", "j516map"], "14.8.3"),
 ]
 IPSW_VERSIONS = patched_ipsws() + UPSTREAM_IPSWS
-CHIP_MIN_VER = {0x8103: "11.0", 0x8112: "12.4", 0x8122: "14.8.3", 0x8140: "26.6"}
+CHIP_MIN_VER = {0x8103: "11.0", 0x8112: "12.4", 0x8122: "14.8.3", 0x8140: "26.6", 0x6040: "26.6.2"}
 DEVICE_MIN = {"j313ap": "11.0", "j413ap": "12.4", "j613ap": "14.8.3",
-              "j615ap": "14.8.3", "j700ap": "26.6"}
+              "j615ap": "14.8.3", "j700ap": "26.6", "j616sap": "26.6.2"}
 TODAY = ["13.5", "14.8.3", "26.6"]
 ON_26_6_2 = dict(sys_firmware="mBoot-18000.161.10", macos_ver="26.6.2",
                  sfr_full_ver="25.7.83.0.0,0")
@@ -97,7 +97,7 @@ class PatchedFirmwareTableTests(unittest.TestCase):
         self.assertEqual((neo.version, neo.devices), ("26.6", ["j700ap"]))
         self.assertEqual(air, IPSW(
             "26.6.2", "26.0", "mBoot-18000.161.10", "25.7.83.0.0,0", False,
-            ["j613ap", "j615ap", "j700ap"],
+            ["j613ap", "j615ap", "j616sap", "j700ap"],
             "https://updates.cdn-apple.com/2026SummerFCS/fullrestores/140-75212/"
             "A2A24B94-1FC1-45A3-93F7-C51B02AF1F4D/UniversalMac_26.6.2_25G83_Restore.ipsw"))
 
@@ -132,6 +132,12 @@ class DefaultFirmwareTests(unittest.TestCase):
         sysinfo, device = mac("j613ap", 0x8122, sys_firmware="iBoot-11881.140.96",
                               macos_ver="15.6", sfr_full_ver="24.6.69.0.0,0")
         self.assertEqual(choose(sysinfo, device, ["26.6.2"]), (None, STUB_SIZE))
+
+    def test_j616s_requires_25g83_and_a_large_stub(self):
+        sysinfo, device = mac("j616sap", 0x6040)
+        self.assertEqual(choose(sysinfo, device, TODAY + ["26.6.2"]),
+                         ("26.6.2", STUB_SIZE_MACOS26))
+        self.assertIsNone(choose(sysinfo, device, TODAY)[0])
 
     def test_m1_and_m2_are_unchanged(self):
         for device_class, chip_id in (("j313ap", 0x8103), ("j413ap", 0x8112)):

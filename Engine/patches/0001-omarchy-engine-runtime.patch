@@ -55,19 +55,21 @@ index 88dd2ab..47aad7c 100644
  
  # Minimum free space to leave when resizing, to allow for OS upgrades
  MIN_FREE_OS = psize("38GB")
-@@ -49,9 +54,11 @@ CHIP_MIN_VER = {
+@@ -49,9 +54,13 @@ CHIP_MIN_VER = {
      0x6030: "14.8.3",   # T6030, M3 Pro
      0x6031: "14.8.3",   # T6031, M3 Max (16-core)
      0x6034: "14.8.3",   # T6034, M3 Max (14-core)
++    0x6040: "26.6.2",   # T6040, M4 Pro
 +    0x8140: "26.6",     # T8140, A18 Pro
  }
  
  DEVICES = {
++    "j616sap": Device("26.6.2", False),  # MacBook Pro (16-inch, M4 Pro, 2024)
 +    "j700ap":   Device("26.6", False),  # MacBook Neo (A18 Pro, 2026)
      "j274ap":   Device("11.0", False),  # Mac mini (M1, 2020)
      "j293ap":   Device("11.0", False),  # MacBook Pro (13-inch, M1, 2020)
      "j313ap":   Device("11.0", False),  # MacBook Air (M1, 2020)
-@@ -95,6 +102,22 @@ if os.environ.get("ALLOW_VM", None):
+@@ -95,6 +104,22 @@ if os.environ.get("ALLOW_VM", None):
      DEVICES["vma2macosap"] = Device("12.0", False)
  
  IPSW_VERSIONS = [
@@ -85,12 +87,12 @@ index 88dd2ab..47aad7c 100644
 +         "mBoot-18000.161.10",
 +         "25.7.83.0.0,0",
 +         False,
-+         ["j613ap", "j615ap", "j700ap"],
++         ["j613ap", "j615ap", "j616sap", "j700ap"],
 +         "https://updates.cdn-apple.com/2026SummerFCS/fullrestores/140-75212/A2A24B94-1FC1-45A3-93F7-C51B02AF1F4D/UniversalMac_26.6.2_25G83_Restore.ipsw"),
      IPSW("12.3.1",
           "12.1",
           "iBoot-7459.101.3",
-@@ -128,7 +151,10 @@ IPSW_VERSIONS = [
+@@ -128,7 +153,10 @@ IPSW_VERSIONS = [
  class InstallerMain:
      def __init__(self, version):
          self.version = version
@@ -101,7 +103,7 @@ index 88dd2ab..47aad7c 100644
          self.credentials_validated = False
          self.expert = False
          self.ipsw = None
-@@ -585,20 +611,11 @@ class InstallerMain:
+@@ -585,20 +613,11 @@ class InstallerMain:
          self.step2(report=True)
  
      def choose_ipsw(self, supported_fw=None):
@@ -127,7 +129,7 @@ index 88dd2ab..47aad7c 100644
  
          minver.sort(key=lambda ipsw: split_ver(ipsw.version))
  
-@@ -812,18 +829,15 @@ class InstallerMain:
+@@ -812,18 +831,15 @@ class InstallerMain:
          else:
              target = resizable[0]
  
@@ -155,7 +157,7 @@ index 88dd2ab..47aad7c 100644
  
          min_perc = 100 * min_size / total
  
-@@ -922,6 +936,25 @@ class InstallerMain:
+@@ -922,6 +938,25 @@ class InstallerMain:
  
          return True
  
@@ -181,7 +183,7 @@ index 88dd2ab..47aad7c 100644
      def action_select_disk(self):
          choices = {"1": "Internal storage"}
  
-@@ -939,21 +972,22 @@ class InstallerMain:
+@@ -939,21 +974,22 @@ class InstallerMain:
          return True
  
      def main(self):
@@ -217,7 +219,7 @@ index 88dd2ab..47aad7c 100644
              p_message("By default, this installer will hide certain advanced options that")
              p_message("are only useful for Asahi Linux developers. You can enable expert mode")
              p_message("to show them. Do not enable this unless you know what you are doing.")
-@@ -970,7 +1004,19 @@ class InstallerMain:
+@@ -970,7 +1006,19 @@ class InstallerMain:
  
          self.chip_min_ver = CHIP_MIN_VER.get(self.sysinfo.chip_id, None)
          self.device = DEVICES.get(self.sysinfo.device_class, None)
@@ -238,7 +240,7 @@ index 88dd2ab..47aad7c 100644
              p_error("This device is not supported yet!")
              p_error("Please check out the Asahi Linux Blog for updates on device support:")
              print()
-@@ -1126,6 +1172,19 @@ class InstallerMain:
+@@ -1126,6 +1174,19 @@ class InstallerMain:
  
          if self.cur_os is None and self.sysinfo.boot_mode != "macOS":
              self.cur_os = default_os
@@ -258,7 +260,7 @@ index 88dd2ab..47aad7c 100644
          self.check_cur_os()
  
          actions = {}
-@@ -1226,7 +1285,11 @@ if __name__ == "__main__":
+@@ -1226,7 +1287,11 @@ if __name__ == "__main__":
          logging.exception("Process execution failed")
          p_warning("If you need to file a bug report, please attach the log file:")
          p_warning(f"  {os.getcwd()}/installer.log")
@@ -317,3 +319,32 @@ diff --git a/src/osinstall.py b/src/osinstall.py
                  self.flush_progress()
              source = part.get("source", None)
              if source:
+diff --git a/asahi_firmware/wifi.py b/asahi_firmware/wifi.py
+index af5abee..55f8519 100644
+--- a/asahi_firmware/wifi.py
++++ b/asahi_firmware/wifi.py
+@@ -45,9 +45,6 @@ class WiFiFWCollection(object):
+                 dirnames.remove("perf")
+             if "assert" in dirnames:
+                 dirnames.remove("assert")
+-            # remove broken firmware dir in 14.6.1 IPSW
+-            if "C-4388__s-C2" in dirnames:
+-                dirnames.remove("C-4388__s-C2")
+             subpath = os.path.relpath(dirpath, source_path)
+             for name in sorted(filenames):
+                 if not any(name.endswith("." + i) for i in self.EXTMAP):
+@@ -59,6 +56,14 @@ class WiFiFWCollection(object):
+                     continue
+                 path = os.path.join(dirpath, name)
+                 relpath = os.path.join(subpath, name)
++                # Some Recovery images ship aliases whose target is absent
++                # (25G83's C-4388__s-C2/aruba.trx names a missing
++                # paradise.trx). Such a link carries no firmware: skip it,
++                # like a file the image lacks, and keep the rest of its
++                # directory.
++                if not os.path.exists(path):
++                    log.info(f"Skipping dangling firmware alias {relpath}")
++                    continue
+                 if not name.endswith(".txt"):
+                     name = "P-" + name
+                 idpath, ext = os.path.join(subpath, name).rsplit(".", 1)
